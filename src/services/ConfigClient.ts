@@ -364,7 +364,10 @@ export class ConfigClient {
    */
   requestFullConfig(): void {
     if (!this.socket || !this.connected) {
-      console.warn('⚠️ Cannot request configuration: Not connected');
+      // Only show warning if we don't have any cached configurations to serve
+      if (!this.options.offlineSupport || Object.keys(this.configs).length === 0) {
+        console.warn('⚠️ Cannot request configuration: Not connected');
+      }
       return;
     }
 
@@ -398,8 +401,8 @@ export class ConfigClient {
         return;
       }
 
-      // Only show warning if no cache is available
-      if (!this.configs[screenName]) {
+      // Only show message if no cache is available and not already pending
+      if (!this.configs[screenName] && !this.pendingRequests.has(screenName)) {
         console.log(`🔄 ${screenName} configuration requested while connecting - will retry once connected`);
         
         // Store the request to retry once connected

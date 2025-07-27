@@ -106,6 +106,12 @@ export const initializeRemoteConfig = (): AppThunk => async (dispatch) => {
     };
 
     configClient.options.onError = (type, error) => {
+      // Don't treat cache-related issues as critical errors when offline support is working
+      if (type === 'connection' && configClient.getAllConfigs() && Object.keys(configClient.getAllConfigs()).length > 0) {
+        console.log('📱 Connection issue detected, but cached configurations are available');
+        return;
+      }
+      
       dispatch(setError(`${type}: ${error.message || 'Unknown error'}`));
     };
 
