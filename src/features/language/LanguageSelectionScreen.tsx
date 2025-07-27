@@ -13,10 +13,11 @@ import { useNavigation } from '@react-navigation/native';
 import { changeLanguage, setAvailableLanguages } from './languageSlice';
 import { requestScreenConfig, selectScreenConfig, selectConfigLoading } from '../remoteConfig/remoteConfigSlice';
 import { AppDispatch } from '../../store';
-import { DynamicRenderer, ComponentDefinition, ActionDefinition } from '../../components/common/DynamicRenderer';
+import DynamicRenderer, { ComponentDefinition, ActionDefinition } from '../../components/common/DynamicRenderer';
+import { SCREEN_NAMES } from '../../constants/ScreenNames';
 
 // Screen identifier for config service
-const SCREEN_NAME = 'Choose.lang';
+const SCREEN_NAME = SCREEN_NAMES.CHOOSE_LANGUAGE;
 
 // Interface for the dynamic screen configuration
 interface DynamicScreenConfig {

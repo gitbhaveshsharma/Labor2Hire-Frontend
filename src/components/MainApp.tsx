@@ -7,7 +7,10 @@
 import React, { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { View, Text, ActivityIndicator, Alert, StyleSheet } from 'react-native';
-import { DynamicRenderer } from './common/DynamicRenderer';
+// import the correct member from DynamicRenderer, or fix the import if the default export is used
+import DynamicRenderer from './common/DynamicRenderer';
+// If DynamicRenderer is not the default export, use:
+// import { DynamicRendererProps } from './common/DynamicRenderer';
 import {
     initializeRemoteConfig,
     requestScreenConfig,
@@ -18,25 +21,26 @@ import {
 } from '../features/remoteConfig/remoteConfigSlice';
 import { AppDispatch } from '../store';
 import { DynamicScreenRenderer } from './DynamicScreenRenderer';
+import { SCREEN_NAMES } from '../constants/ScreenNames';
 
 export const MainApp: React.FC = () => {
     const dispatch = useDispatch<AppDispatch>();
-    const [currentScreen, setCurrentScreen] = useState<string>('Choose.lang');
+    const [currentScreen, setCurrentScreen] = useState<string>(SCREEN_NAMES.CHOOSE_LANGUAGE);
     const [appInitialized, setAppInitialized] = useState(false);
 
     // Selectors
     const loading = useSelector(selectConfigLoading);
     const error = useSelector(selectConfigError);
     const connected = useSelector(selectConfigConnected);
-    const appConfig = useSelector(selectScreenConfig('App'));
+    const appConfig = useSelector(selectScreenConfig(SCREEN_NAMES.APP));
 
     useEffect(() => {
         // Initialize remote configuration on app start
         dispatch(initializeRemoteConfig());
 
         // Request main app configuration and initial screen
-        dispatch(requestScreenConfig('App'));
-        dispatch(requestScreenConfig('Choose.lang'));
+        dispatch(requestScreenConfig(SCREEN_NAMES.APP));
+        dispatch(requestScreenConfig(SCREEN_NAMES.CHOOSE_LANGUAGE));
     }, [dispatch]);
 
     useEffect(() => {
@@ -44,10 +48,10 @@ export const MainApp: React.FC = () => {
         if (appConfig && !appInitialized) {
             setAppInitialized(true);
 
-            // Get initial screen from config, default to Choose.lang for language selection
+            // Get initial screen from config, default to ChooseLanguage for language selection
             const initialRoute = appConfig.navigation?.routes?.find(
                 (route: any) => route.name === appConfig.navigation?.initialRoute
-            )?.component || 'Choose.lang';
+            )?.component || SCREEN_NAMES.CHOOSE_LANGUAGE;
 
             setCurrentScreen(initialRoute);
         }
@@ -115,17 +119,17 @@ export const MainApp: React.FC = () => {
             case 'retryLoad':
                 // Handle retry loading
                 dispatch(initializeRemoteConfig());
-                dispatch(requestScreenConfig('App'));
+                dispatch(requestScreenConfig(SCREEN_NAMES.APP));
                 dispatch(requestScreenConfig(currentScreen));
                 break;
 
             case 'reload':
                 // Handle app reload
                 setAppInitialized(false);
-                setCurrentScreen('Choose.lang');
+                setCurrentScreen(SCREEN_NAMES.CHOOSE_LANGUAGE);
                 dispatch(initializeRemoteConfig());
-                dispatch(requestScreenConfig('App'));
-                dispatch(requestScreenConfig('Choose.lang'));
+                dispatch(requestScreenConfig(SCREEN_NAMES.APP));
+                dispatch(requestScreenConfig(SCREEN_NAMES.CHOOSE_LANGUAGE));
                 break;
 
             default:

@@ -1,6 +1,7 @@
 /**
- * Remote Configuration Client
+ * Enhanced Remote Configuration Client
  * Handles connection to remote configuration server and real-time updates
+ * Includes offline support, enhanced error handling, and performance optimizations
  * @author Labor2Hire Team
  */
 
@@ -16,10 +17,13 @@ export interface ConfigClientOptions {
   reconnectDelay?: number;
   reconnectAttempts?: number;
   autoReconnect?: boolean;
+  offlineSupport?: boolean;
+  cacheExpiry?: number;
+  enableMetrics?: boolean;
 }
 
 /**
- * Configuration Client Class
+ * Enhanced Configuration Client Class
  * Handles connection to remote configuration server and real-time updates
  */
 export class ConfigClient {
@@ -31,9 +35,19 @@ export class ConfigClient {
   private reconnectAttempts = 0;
   private lastActivity = Date.now();
   private readonly PREFERENCE_STORAGE_KEY = '@Labor2Hire:UserPreferences:';
+  private readonly CONFIG_CACHE_KEY = '@Labor2Hire:ConfigCache:';
+  private readonly CACHE_METADATA_KEY = '@Labor2Hire:CacheMetadata';
+  private metrics = {
+    connectionAttempts: 0,
+    successfulConnections: 0,
+    configRequests: 0,
+    cacheHits: 0,
+    cacheMisses: 0,
+    errors: 0,
+  };
 
   constructor(options: ConfigClientOptions = {}) {
-    // Default options
+    // Default options with enhanced features
     this.options = {
       serverUrl: 'http://localhost:5002',
       onConfigUpdate: this.defaultConfigUpdateHandler,
@@ -43,25 +57,102 @@ export class ConfigClient {
       reconnectDelay: 5000,
       reconnectAttempts: 10,
       autoReconnect: true,
+      offlineSupport: true,
+      cacheExpiry: 24 * 60 * 60 * 1000, // 24 hours
+      enableMetrics: true,
       ...options,
     };
+
+    // Load cached configurations on initialization
+    this.loadCachedConfigurations();
   }
 
   /**
-   * Connect to the configuration server
+   * Load cached configurations from local storage
+   */
+  private async loadCachedConfigurations(): Promise<void> {
+    if (!this.options.offlineSupport) return;
+
+    try {
+      const cacheMetadata = await AsyncStorage.getItem(this.CACHE_METADATA_KEY);
+      const metadata = cacheMetadata ? JSON.parse(cacheMetadata) : {};
+
+      // Check if cache is still valid
+      const now = Date.now();
+      if (metadata.timestamp && (now - metadata.timestamp) > (this.options.cacheExpiry || 24 * 60 * 60 * 1000)) {
+        console.log('🗑️ Cache expired, clearing cached configurations');
+        await this.clearCache();
+        return;
+      }
+
+      const cachedConfigs = await AsyncStorage.getItem(this.CONFIG_CACHE_KEY);
+      if (cachedConfigs) {
+        this.configs = JSON.parse(cachedConfigs);
+        console.log(`📱 Loaded ${Object.keys(this.configs).length} cached configurations`);
+        
+        if (this.options.enableMetrics) {
+          this.metrics.cacheHits += Object.keys(this.configs).length;
+        }
+      }
+    } catch (error) {
+      console.error('❌ Failed to load cached configurations:', error);
+      this.handleError('cache_load', error);
+    }
+  }
+
+  /**
+   * Save configurations to local cache
+   */
+  private async saveCachedConfigurations(): Promise<void> {
+    if (!this.options.offlineSupport) return;
+
+    try {
+      await AsyncStorage.setItem(this.CONFIG_CACHE_KEY, JSON.stringify(this.configs));
+      await AsyncStorage.setItem(this.CACHE_METADATA_KEY, JSON.stringify({
+        timestamp: Date.now(),
+        version: '1.0.0',
+        totalConfigs: Object.keys(this.configs).length,
+      }));
+      console.log('💾 Configurations cached successfully');
+    } catch (error) {
+      console.error('❌ Failed to cache configurations:', error);
+      this.handleError('cache_save', error);
+    }
+  }
+
+  /**
+   * Clear cached configurations
+   */
+  private async clearCache(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(this.CONFIG_CACHE_KEY);
+      await AsyncStorage.removeItem(this.CACHE_METADATA_KEY);
+      console.log('🗑️ Cache cleared successfully');
+    } catch (error) {
+      console.error('❌ Failed to clear cache:', error);
+    }
+  }
+
+  /**
+   * Enhanced connect with metrics and error handling
    */
   connect(): void {
     try {
+      if (this.options.enableMetrics) {
+        this.metrics.connectionAttempts++;
+      }
+
       if (!this.options.serverUrl) {
         throw new Error('Server URL is not defined');
       }
       
-      // Create socket instance with connection options
+      // Create socket instance with enhanced connection options
       this.socket = io(this.options.serverUrl, {
         path: '/config-socket',
         reconnection: false, // We'll handle reconnection manually
         transports: ['websocket', 'polling'],
         timeout: 10000,
+        forceNew: true,
       });
 
       // Setup event handlers
@@ -71,32 +162,53 @@ export class ConfigClient {
     } catch (error) {
       console.error('❌ Failed to initialize socket connection:', error);
       this.handleError('connection', error);
+      
+      // Use cached configurations if available
+      if (this.options.offlineSupport && Object.keys(this.configs).length > 0) {
+        console.log('📱 Using cached configurations in offline mode');
+        this.notifyFullConfigSync();
+      }
     }
   }
 
   /**
-   * Setup WebSocket event handlers
+   * Notify full config sync from cache
+   */
+  private notifyFullConfigSync(): void {
+    if (this.options.onFullConfigSync && Object.keys(this.configs).length > 0) {
+      this.options.onFullConfigSync(this.configs, {
+        source: 'cache',
+        timestamp: new Date().toISOString(),
+        totalConfigs: Object.keys(this.configs).length,
+      });
+    }
+  }
+
+  /**
+   * Enhanced setup event handlers with better error handling
    */
   private setupEventHandlers(): void {
     if (!this.socket) return;
 
-    // Handle successful connection
-    this.socket.on('connect', () => {
-      console.log('✅ Connected to remote configuration server');
-      this.connected = true;
-      this.reconnectAttempts = 0;
-      this.lastActivity = Date.now();
+      // Handle successful connection
+      this.socket.on('connect', () => {
+        console.log('✅ Connected to remote configuration server');
+        this.connected = true;
+        this.reconnectAttempts = 0;
+        this.lastActivity = Date.now();
 
-      // Notify connection change
-      if (this.options.onConnectionChange) {
-        this.options.onConnectionChange(true, 'Connected successfully');
-      }
+        if (this.options.enableMetrics) {
+          this.metrics.successfulConnections++;
+        }
 
-      // Request full configuration on connect
-      this.requestFullConfig();
-    });
+        // Notify connection change
+        if (this.options.onConnectionChange) {
+          this.options.onConnectionChange(true, 'Connected successfully');
+        }
 
-    // Handle disconnection
+        // Request full configuration on connect
+        this.requestFullConfig();
+      });    // Handle disconnection
     this.socket.on('disconnect', (reason) => {
       console.log(`❌ Disconnected from remote configuration server: ${reason}`);
       this.connected = false;
@@ -123,25 +235,32 @@ export class ConfigClient {
       }
     });
 
-    // Handle configuration updates for specific screen
-    this.socket.on('screenConfigUpdate', (data) => {
-      const { screen, config } = data;
-      console.log(`📥 Received configuration update for ${screen}`);
-      
-      // Update local configuration cache
-      if (screen && config) {
-        this.configs[screen] = config;
-      }
+      // Handle configuration updates for specific screen
+      this.socket.on('screenConfigUpdate', async (data) => {
+        const { screen, config } = data;
+        console.log(`📥 Received configuration update for ${screen}`);
+        
+        // Validate configuration before updating
+        if (screen && config && this.validateScreenConfig(screen, config)) {
+          // Update local configuration cache
+          this.configs[screen] = config;
+          
+          // Save to persistent cache if offline support enabled
+          if (this.options.offlineSupport) {
+            await this.saveCachedConfigurations();
+          }
 
-      // Call update handler
-      if (this.options.onConfigUpdate) {
-        this.options.onConfigUpdate(screen, config, data);
-      }
+          // Call update handler
+          if (this.options.onConfigUpdate) {
+            this.options.onConfigUpdate(screen, config, data);
+          }
+        } else {
+          console.warn('⚠️ Received invalid configuration update, ignoring');
+          this.handleError('invalid_config', new Error(`Invalid config for ${screen}`));
+        }
 
-      this.lastActivity = Date.now();
-    });
-
-    // Also handle the legacy 'configUpdate' event for backward compatibility
+        this.lastActivity = Date.now();
+      });    // Also handle the legacy 'configUpdate' event for backward compatibility
     this.socket.on('configUpdate', (data) => {
       const { screen, config } = data;
       console.log(`📥 Received legacy configuration update for ${screen}`);
@@ -159,44 +278,60 @@ export class ConfigClient {
       this.lastActivity = Date.now();
     });
 
-    // Handle full configuration sync
-    this.socket.on('fullConfigSync', (data) => {
-      const { configs } = data;
-      console.log('📥 Received full configuration sync');
+      // Handle full configuration sync
+      this.socket.on('fullConfigSync', async (data) => {
+        const { configs } = data;
+        console.log('📥 Received full configuration sync');
 
-      // Validate configurations before updating
-      if (configs && typeof configs === 'object') {
-        try {
-          // Update local configuration cache
-          this.configs = { ...configs };
+        // Validate configurations before updating
+        if (configs && typeof configs === 'object') {
+          try {
+            // Validate each screen configuration
+            const validatedConfigs: Record<string, any> = {};
+            let validCount = 0;
+            let invalidCount = 0;
 
-          // Validate each screen configuration
-          Object.keys(configs).forEach(screenName => {
-            const config = configs[screenName];
-            if (!config.screenType || !config.metadata) {
-              console.warn(`⚠️ Invalid configuration structure for screen: ${screenName}`);
+            Object.keys(configs).forEach(screenName => {
+              const config = configs[screenName];
+              if (this.validateScreenConfig(screenName, config)) {
+                validatedConfigs[screenName] = config;
+                validCount++;
+              } else {
+                console.warn(`⚠️ Invalid configuration structure for screen: ${screenName}`);
+                invalidCount++;
+              }
+            });
+
+            // Update local configuration cache with validated configs
+            this.configs = { ...validatedConfigs };
+
+            // Save to persistent cache if offline support enabled
+            if (this.options.offlineSupport) {
+              await this.saveCachedConfigurations();
             }
-          });
 
-          console.log(`✅ Successfully synchronized ${Object.keys(configs).length} screen configurations`);
+            console.log(`✅ Successfully synchronized ${validCount} screen configurations${invalidCount > 0 ? ` (${invalidCount} invalid)` : ''}`);
 
-          // Call sync handler
-          if (this.options.onFullConfigSync) {
-            this.options.onFullConfigSync(configs, data);
+            // Call sync handler
+            if (this.options.onFullConfigSync) {
+              this.options.onFullConfigSync(this.configs, {
+                ...data,
+                validCount,
+                invalidCount,
+                source: 'server',
+              });
+            }
+          } catch (error) {
+            console.error('❌ Failed to process full configuration sync:', error);
+            this.handleError('fullConfigSync', error);
           }
-        } catch (error) {
-          console.error('❌ Failed to process full configuration sync:', error);
-          this.handleError('fullConfigSync', error);
+        } else {
+          console.warn('⚠️ Invalid full configuration sync data received');
+          this.handleError('fullConfigSync', new Error('Invalid sync data format'));
         }
-      } else {
-        console.warn('⚠️ Invalid full configuration sync data received');
-        this.handleError('fullConfigSync', new Error('Invalid sync data format'));
-      }
 
-      this.lastActivity = Date.now();
-    });
-
-    // Handle server pong response
+        this.lastActivity = Date.now();
+      });    // Handle server pong response
     this.socket.on('pong', (data) => {
       console.log('❤️ Server heartbeat received:', data);
       this.lastActivity = Date.now();
@@ -217,12 +352,36 @@ export class ConfigClient {
   }
 
   /**
-   * Request specific screen configuration
+   * Enhanced request screen configuration with caching
    * @param screenName - Name of the screen
    */
   requestScreenConfig(screenName: string): void {
+    if (this.options.enableMetrics) {
+      this.metrics.configRequests++;
+    }
+
     if (!this.socket || !this.connected) {
       console.warn(`⚠️ Cannot request ${screenName} configuration: Not connected`);
+      
+      // Try to serve from cache if offline support enabled
+      if (this.options.offlineSupport && this.configs[screenName]) {
+        console.log(`📱 Serving ${screenName} from cache (offline mode)`);
+        if (this.options.onConfigUpdate) {
+          this.options.onConfigUpdate(screenName, this.configs[screenName], {
+            source: 'cache',
+            timestamp: new Date().toISOString(),
+          });
+        }
+        
+        if (this.options.enableMetrics) {
+          this.metrics.cacheHits++;
+        }
+        return;
+      }
+
+      if (this.options.enableMetrics) {
+        this.metrics.cacheMisses++;
+      }
       return;
     }
 
@@ -240,14 +399,52 @@ export class ConfigClient {
   }
 
   /**
-   * Handle error with proper logging and callbacks
+   * Handle error with enhanced logging and metrics
    */
   private handleError(type: string, error: any): void {
+    if (this.options.enableMetrics) {
+      this.metrics.errors++;
+    }
+
     console.error(`❌ ConfigClient error [${type}]:`, error);
     
     if (this.options.onError) {
       this.options.onError(type, error);
     }
+  }
+
+  /**
+   * Get client metrics
+   */
+  getMetrics(): typeof this.metrics {
+    return { ...this.metrics };
+  }
+
+  /**
+   * Reset metrics
+   */
+  resetMetrics(): void {
+    this.metrics = {
+      connectionAttempts: 0,
+      successfulConnections: 0,
+      configRequests: 0,
+      cacheHits: 0,
+      cacheMisses: 0,
+      errors: 0,
+    };
+  }
+
+  /**
+   * Get connection statistics
+   */
+  getConnectionStats(): object {
+    return {
+      connected: this.connected,
+      lastActivity: this.lastActivity,
+      reconnectAttempts: this.reconnectAttempts,
+      totalConfigs: Object.keys(this.configs).length,
+      metrics: this.getMetrics(),
+    };
   }
 
   /**

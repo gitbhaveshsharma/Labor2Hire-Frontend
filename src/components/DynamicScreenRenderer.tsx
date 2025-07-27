@@ -7,8 +7,9 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
 import { View, Text, StyleSheet } from 'react-native';
-import { DynamicRenderer } from './common/DynamicRenderer';
+import DynamicRenderer from './common/DynamicRenderer';
 import { selectScreenConfig } from '../features/remoteConfig/remoteConfigSlice';
+import { SCREEN_NAMES } from '../constants/ScreenNames';
 
 interface DynamicScreenRendererProps {
     currentScreen: string;
@@ -75,7 +76,7 @@ export const DynamicScreenRenderer: React.FC<DynamicScreenRendererProps> = ({
             isSelected: false,
         },
         navigation: {
-            canGoBack: currentScreen !== 'Choose.lang',
+            canGoBack: currentScreen !== SCREEN_NAMES.CHOOSE_LANGUAGE,
             currentRoute: currentScreen,
         },
     };
