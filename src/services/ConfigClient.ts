@@ -34,6 +34,7 @@ export class ConfigClient {
   private reconnectTimer: NodeJS.Timeout | null = null;
   private reconnectAttempts = 0;
   private lastActivity = Date.now();
+  private pendingRequests: Set<string> = new Set();
   private readonly PREFERENCE_STORAGE_KEY = '@Labor2Hire:UserPreferences:';
   private readonly CONFIG_CACHE_KEY = '@Labor2Hire:ConfigCache:';
   private readonly CACHE_METADATA_KEY = '@Labor2Hire:CacheMetadata';
@@ -49,7 +50,7 @@ export class ConfigClient {
   constructor(options: ConfigClientOptions = {}) {
     // Default options with enhanced features
     this.options = {
-      serverUrl: 'http://localhost:5002',
+      serverUrl: 'http://10.0.2.2:5001',
       onConfigUpdate: this.defaultConfigUpdateHandler,
       onFullConfigSync: this.defaultFullConfigSyncHandler,
       onConnectionChange: this.defaultConnectionChangeHandler,
@@ -137,6 +138,18 @@ export class ConfigClient {
    * Enhanced connect with metrics and error handling
    */
   connect(): void {
+    // If socket exists and is trying to connect or is already connected, do nothing.
+    if (this.socket && this.socket.active) {
+      console.log('🔌 Connection already active or attempting. Ignoring connect call.');
+      return;
+    }
+
+    // If socket exists but is disconnected, try to reconnect it manually.
+    if (this.socket) {
+      console.log('🔌 Attempting to reconnect using existing socket instance...');
+      this.socket.connect();
+      return;
+    }
     try {
       if (this.options.enableMetrics) {
         this.metrics.connectionAttempts++;
@@ -152,7 +165,6 @@ export class ConfigClient {
         reconnection: false, // We'll handle reconnection manually
         transports: ['websocket', 'polling'],
         timeout: 10000,
-        forceNew: true,
       });
 
       // Setup event handlers
@@ -208,6 +220,15 @@ export class ConfigClient {
 
         // Request full configuration on connect
         this.requestFullConfig();
+
+        // Process any pending requests
+        if (this.pendingRequests.size > 0) {
+          console.log(`🔄 Processing ${this.pendingRequests.size} pending configuration requests`);
+          for (const screenName of this.pendingRequests) {
+            this.requestScreenConfig(screenName);
+          }
+          this.pendingRequests.clear();
+        }
       });    // Handle disconnection
     this.socket.on('disconnect', (reason) => {
       console.log(`❌ Disconnected from remote configuration server: ${reason}`);
@@ -361,8 +382,6 @@ export class ConfigClient {
     }
 
     if (!this.socket || !this.connected) {
-      console.warn(`⚠️ Cannot request ${screenName} configuration: Not connected`);
-      
       // Try to serve from cache if offline support enabled
       if (this.options.offlineSupport && this.configs[screenName]) {
         console.log(`📱 Serving ${screenName} from cache (offline mode)`);
@@ -377,6 +396,14 @@ export class ConfigClient {
           this.metrics.cacheHits++;
         }
         return;
+      }
+
+      // Only show warning if no cache is available
+      if (!this.configs[screenName]) {
+        console.log(`🔄 ${screenName} configuration requested while connecting - will retry once connected`);
+        
+        // Store the request to retry once connected
+        this.pendingRequests.add(screenName);
       }
 
       if (this.options.enableMetrics) {
@@ -630,7 +657,7 @@ export class ConfigClient {
 // Create and export singleton instance
 export const configClient = new ConfigClient({
   // Use the backend URL, can be changed to production URL
-  serverUrl: 'http://localhost:5002',
+  serverUrl: 'http://10.0.2.2:5001',
   autoReconnect: true,
 });
 

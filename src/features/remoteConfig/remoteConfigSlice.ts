@@ -88,10 +88,12 @@ export const initializeRemoteConfig = (): AppThunk => async (dispatch) => {
     // Setup event handlers
     configClient.options.onConfigUpdate = (screen, config, _data) => {
       dispatch(updateScreenConfig({ screen, config }));
+      dispatch(setLoading(false)); // Clear loading state when config is received
     };
 
     configClient.options.onFullConfigSync = (configs, _data) => {
       dispatch(updateAllConfigs(configs));
+      dispatch(setLoading(false)); // Clear loading state when full sync is received
     };
 
     configClient.options.onConnectionChange = (connected, reason) => {
@@ -117,12 +119,31 @@ export const initializeRemoteConfig = (): AppThunk => async (dispatch) => {
 // Thunk to request screen configuration
 export const requestScreenConfig =
   (screenName: string): AppThunk =>
-  async (dispatch) => {
-    dispatch(setLoading(true));
+  async (dispatch, getState) => {
+    const state = getState();
+    const existingConfig = state.remoteConfig.configs[screenName];
+    
+    // If config already exists and we're connected, don't set loading
+    if (existingConfig && state.remoteConfig.connected) {
+      configClient.requestScreenConfig(screenName);
+      return;
+    }
+    
+    // Only set loading if we don't have cached config
+    if (!existingConfig) {
+      dispatch(setLoading(true));
+    }
 
     try {
       // Request screen config
       configClient.requestScreenConfig(screenName);
+      
+      // If we have cached config, clear loading state after a short delay
+      if (existingConfig) {
+        setTimeout(() => {
+          dispatch(setLoading(false));
+        }, 100);
+      }
     } catch (error: any) {
       dispatch(setError(error.message || `Failed to request ${screenName} configuration`));
     }

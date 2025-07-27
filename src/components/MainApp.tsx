@@ -37,11 +37,15 @@ export const MainApp: React.FC = () => {
     useEffect(() => {
         // Initialize remote configuration on app start
         dispatch(initializeRemoteConfig());
-
-        // Request main app configuration and initial screen
-        dispatch(requestScreenConfig(SCREEN_NAMES.APP));
-        dispatch(requestScreenConfig(SCREEN_NAMES.CHOOSE_LANGUAGE));
     }, [dispatch]);
+
+    useEffect(() => {
+        // Request configurations only after connection is established
+        if (connected) {
+            dispatch(requestScreenConfig(SCREEN_NAMES.APP));
+            dispatch(requestScreenConfig(SCREEN_NAMES.CHOOSE_LANGUAGE));
+        }
+    }, [connected, dispatch]);
 
     useEffect(() => {
         // Set app as initialized once we have the main config
