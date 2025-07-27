@@ -17,7 +17,8 @@ import {
     selectConfigLoading,
     selectConfigError,
     selectScreenConfig,
-    selectConfigConnected
+    selectConfigConnected,
+    setError
 } from '../features/remoteConfig/remoteConfigSlice';
 import { AppDispatch } from '../store';
 import { DynamicScreenRenderer } from './DynamicScreenRenderer';
@@ -48,6 +49,13 @@ export const MainApp: React.FC = () => {
     }, [connected, dispatch]);
 
     useEffect(() => {
+        // Clear any previous errors when connection is restored and we have configs
+        if (connected && appConfig && error) {
+            dispatch(setError(null));
+        }
+    }, [connected, appConfig, error, dispatch]);
+
+    useEffect(() => {
         // Set app as initialized once we have the main config
         if (appConfig && !appInitialized) {
             setAppInitialized(true);
@@ -62,8 +70,9 @@ export const MainApp: React.FC = () => {
     }, [appConfig, appInitialized]);
 
     useEffect(() => {
-        // Handle connection errors
-        if (error) {
+        // Handle critical connection errors only when the app cannot function
+        // Don't show alerts if we have cached configurations and can operate offline
+        if (error && (!appConfig && !connected && !Object.keys(appConfig || {}).length)) {
             Alert.alert(
                 'Configuration Error',
                 error,
@@ -77,7 +86,7 @@ export const MainApp: React.FC = () => {
                 ]
             );
         }
-    }, [error, dispatch]);
+    }, [error, dispatch, appConfig, connected]);
 
     // Handle action from dynamic components
     const handleAction = async (action: any, _context?: any) => {

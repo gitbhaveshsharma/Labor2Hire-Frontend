@@ -239,8 +239,9 @@ export class ConfigClient {
         this.options.onConnectionChange(false, reason);
       }
 
-      // Attempt reconnection if enabled
-      if (this.options.autoReconnect) {
+      // Only attempt reconnection for unexpected disconnections
+      // Don't reconnect for intentional server disconnections
+      if (this.options.autoReconnect && reason !== 'io server disconnect') {
         this.attemptReconnection();
       }
     });
@@ -569,6 +570,12 @@ export class ConfigClient {
    * Attempt reconnection to server
    */
   private attemptReconnection(): void {
+    // Don't attempt reconnection if already connected
+    if (this.connected && this.socket?.connected) {
+      console.log('🔌 Already connected, skipping reconnection attempt');
+      return;
+    }
+
     // Clear any existing reconnection timer
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);

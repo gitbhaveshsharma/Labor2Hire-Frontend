@@ -107,8 +107,16 @@ export const initializeRemoteConfig = (): AppThunk => async (dispatch) => {
 
     configClient.options.onError = (type, error) => {
       // Don't treat cache-related issues as critical errors when offline support is working
-      if (type === 'connection' && configClient.getAllConfigs() && Object.keys(configClient.getAllConfigs()).length > 0) {
-        console.log('📱 Connection issue detected, but cached configurations are available');
+      const hasValidCachedConfigs = configClient.getAllConfigs() && Object.keys(configClient.getAllConfigs()).length > 0;
+      
+      if ((type === 'connection' || type === 'reconnect_failed') && hasValidCachedConfigs) {
+        console.log(`📱 ${type} issue detected, but cached configurations are available - operating in offline mode`);
+        return;
+      }
+      
+      // Only show critical errors that affect functionality
+      if (type === 'cache_load' || type === 'cache_save') {
+        console.warn(`⚠️ Non-critical error [${type}]:`, error);
         return;
       }
       
