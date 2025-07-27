@@ -124,9 +124,27 @@ export class ConfigClient {
     });
 
     // Handle configuration updates for specific screen
-    this.socket.on('configUpdate', (data) => {
+    this.socket.on('screenConfigUpdate', (data) => {
       const { screen, config } = data;
       console.log(`📥 Received configuration update for ${screen}`);
+      
+      // Update local configuration cache
+      if (screen && config) {
+        this.configs[screen] = config;
+      }
+
+      // Call update handler
+      if (this.options.onConfigUpdate) {
+        this.options.onConfigUpdate(screen, config, data);
+      }
+
+      this.lastActivity = Date.now();
+    });
+
+    // Also handle the legacy 'configUpdate' event for backward compatibility
+    this.socket.on('configUpdate', (data) => {
+      const { screen, config } = data;
+      console.log(`📥 Received legacy configuration update for ${screen}`);
       
       // Update local configuration cache
       if (screen && config) {
@@ -146,14 +164,33 @@ export class ConfigClient {
       const { configs } = data;
       console.log('📥 Received full configuration sync');
 
-      // Update local configuration cache
-      if (configs) {
-        this.configs = { ...configs };
-      }
+      // Validate configurations before updating
+      if (configs && typeof configs === 'object') {
+        try {
+          // Update local configuration cache
+          this.configs = { ...configs };
 
-      // Call sync handler
-      if (this.options.onFullConfigSync) {
-        this.options.onFullConfigSync(configs, data);
+          // Validate each screen configuration
+          Object.keys(configs).forEach(screenName => {
+            const config = configs[screenName];
+            if (!config.screenType || !config.metadata) {
+              console.warn(`⚠️ Invalid configuration structure for screen: ${screenName}`);
+            }
+          });
+
+          console.log(`✅ Successfully synchronized ${Object.keys(configs).length} screen configurations`);
+
+          // Call sync handler
+          if (this.options.onFullConfigSync) {
+            this.options.onFullConfigSync(configs, data);
+          }
+        } catch (error) {
+          console.error('❌ Failed to process full configuration sync:', error);
+          this.handleError('fullConfigSync', error);
+        }
+      } else {
+        console.warn('⚠️ Invalid full configuration sync data received');
+        this.handleError('fullConfigSync', new Error('Invalid sync data format'));
       }
 
       this.lastActivity = Date.now();
@@ -203,12 +240,54 @@ export class ConfigClient {
   }
 
   /**
-   * Get current configuration for a screen
-   * @param screenName - Name of the screen
-   * @returns Configuration object or null
+   * Handle error with proper logging and callbacks
+   */
+  private handleError(type: string, error: any): void {
+    console.error(`❌ ConfigClient error [${type}]:`, error);
+    
+    if (this.options.onError) {
+      this.options.onError(type, error);
+    }
+  }
+
+  /**
+   * Validate screen configuration structure
+   */
+  private validateScreenConfig(screenName: string, config: any): boolean {
+    if (!config) {
+      console.warn(`⚠️ Empty configuration for screen: ${screenName}`);
+      return false;
+    }
+
+    if (!config.screenType) {
+      console.warn(`⚠️ Missing screenType for screen: ${screenName}`);
+      return false;
+    }
+
+    if (!config.metadata) {
+      console.warn(`⚠️ Missing metadata for screen: ${screenName}`);
+      return false;
+    }
+
+    if (!config.components || !Array.isArray(config.components)) {
+      console.warn(`⚠️ Missing or invalid components array for screen: ${screenName}`);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Get screen configuration with validation
    */
   getScreenConfig(screenName: string): any | null {
-    return this.configs[screenName] || null;
+    const config = this.configs[screenName] || null;
+    
+    if (config && !this.validateScreenConfig(screenName, config)) {
+      console.warn(`⚠️ Invalid configuration structure for screen: ${screenName}`);
+    }
+    
+    return config;
   }
 
   /**
@@ -348,17 +427,6 @@ export class ConfigClient {
    */
   private defaultErrorHandler(type: string, error: any): void {
     console.error(`📝 Default handler: Error occurred (${type})`, error);
-  }
-
-  /**
-   * Handle client error
-   * @param type - Error type
-   * @param error - Error object
-   */
-  private handleError(type: string, error: any): void {
-    if (this.options.onError) {
-      this.options.onError(type, error);
-    }
   }
 }
 
