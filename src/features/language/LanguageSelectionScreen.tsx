@@ -143,7 +143,7 @@ const LanguageSelectionScreen: React.FC = () => {
                         type: 'ActivityIndicator',
                         props: {
                             size: 'large',
-                            color: '#007bff'
+                            color: '#000000ff'
                         }
                     },
                     {
@@ -202,7 +202,7 @@ const LanguageSelectionScreen: React.FC = () => {
                     {
                         type: 'TouchableOpacity',
                         style: {
-                            backgroundColor: '#007bff',
+                            backgroundColor: '#0d3967ff',
                             padding: 12,
                             borderRadius: 8
                         },

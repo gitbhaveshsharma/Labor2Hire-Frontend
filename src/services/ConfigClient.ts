@@ -48,9 +48,44 @@ export class ConfigClient {
   };
 
   constructor(options: ConfigClientOptions = {}) {
-    // Default options with enhanced features
+    // Detect if running on emulator or physical device
+    let defaultServerUrl = 'http://10.0.2.2:5001';
+    try {
+      // Use react-native-device-info if available
+      // If not, fallback to basic detection
+      // This code assumes you have 'react-native-device-info' installed
+      // If not, you can install it or use a custom detection
+      // import DeviceInfo dynamically to avoid breaking web builds
+      let isEmulator = false;
+      // Check if 'navigator' exists in global scope before accessing
+      if (typeof global !== 'undefined' && typeof (global as any).navigator !== 'undefined' && (global as any).navigator.product === 'ReactNative') {
+        // Dynamically require to avoid issues in web
+        try {
+          const DeviceInfo = require('react-native-device-info');
+          if (DeviceInfo && typeof DeviceInfo.isEmulator === 'function') {
+            DeviceInfo.isEmulator().then((result: boolean) => {
+              isEmulator = result;
+            });
+          }
+        } catch (err) {
+          // Fallback: check for Android emulator IP
+          // If window.location.hostname is 10.0.2.2, assume emulator
+          if (typeof global !== 'undefined' && typeof (global as any).window !== 'undefined' && (global as any).window.location && (global as any).window.location.hostname === '10.0.2.2') {
+            isEmulator = true;
+          }
+        }
+      }
+      // If not emulator, use LAN IP (replace with your server's LAN IP)
+      if (!isEmulator) {
+        // You may want to set this to your actual LAN IP
+        defaultServerUrl = 'http://192.168.0.105:5001'; // <-- CHANGE THIS TO YOUR SERVER'S LAN IP
+      }
+    } catch (e) {
+      // Fallback to default
+    }
+
     this.options = {
-      serverUrl: 'http://10.0.2.2:5001',
+      serverUrl: defaultServerUrl,
       onConfigUpdate: this.defaultConfigUpdateHandler,
       onFullConfigSync: this.defaultFullConfigSyncHandler,
       onConnectionChange: this.defaultConnectionChangeHandler,
@@ -667,7 +702,7 @@ export class ConfigClient {
 // Create and export singleton instance
 export const configClient = new ConfigClient({
   // Use the backend URL, can be changed to production URL
-  serverUrl: 'http://10.0.2.2:5001',
+  serverUrl: 'http://192.168.0.105:5001',
   autoReconnect: true,
 });
 
