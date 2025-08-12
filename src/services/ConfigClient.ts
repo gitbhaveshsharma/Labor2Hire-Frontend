@@ -90,8 +90,8 @@ export class ConfigClient {
       onFullConfigSync: this.defaultFullConfigSyncHandler,
       onConnectionChange: this.defaultConnectionChangeHandler,
       onError: this.defaultErrorHandler,
-      reconnectDelay: 5000,
-      reconnectAttempts: 10,
+      reconnectDelay: 5000, // Increased back to 5000 for stability
+      reconnectAttempts: 12, // Reduced from 15 for better control
       autoReconnect: true,
       offlineSupport: true,
       cacheExpiry: 24 * 60 * 60 * 1000, // 24 hours
@@ -174,17 +174,18 @@ export class ConfigClient {
    */
   connect(): void {
     // If socket exists and is trying to connect or is already connected, do nothing.
-    if (this.socket && this.socket.active) {
+    if (this.socket && (this.socket.connected || this.socket.active)) {
       console.log('🔌 Connection already active or attempting. Ignoring connect call.');
       return;
     }
 
     // If socket exists but is disconnected, try to reconnect it manually.
-    if (this.socket) {
+    if (this.socket && !this.socket.connected) {
       console.log('🔌 Attempting to reconnect using existing socket instance...');
       this.socket.connect();
       return;
     }
+
     try {
       if (this.options.enableMetrics) {
         this.metrics.connectionAttempts++;
@@ -194,12 +195,20 @@ export class ConfigClient {
         throw new Error('Server URL is not defined');
       }
       
-      // Create socket instance with enhanced connection options
+      // Create socket instance with optimized connection options for stability
       this.socket = io(this.options.serverUrl, {
         path: '/config-socket',
         reconnection: false, // We'll handle reconnection manually
-        transports: ['websocket', 'polling'],
-        timeout: 10000,
+        transports: ['polling', 'websocket'], // Start with polling, then upgrade to websocket
+        timeout: 20000, // Increased timeout for connection
+        forceNew: false, // Allow reusing connections
+        autoConnect: true,
+        upgrade: true, // Allow transport upgrades
+        rememberUpgrade: false, // Don't remember the upgraded transport
+        // Stability settings
+        forceBase64: false,
+        timestampRequests: true,
+        timestampParam: 't',
       });
 
       // Setup event handlers
@@ -237,34 +246,56 @@ export class ConfigClient {
   private setupEventHandlers(): void {
     if (!this.socket) return;
 
-      // Handle successful connection
-      this.socket.on('connect', () => {
-        console.log('✅ Connected to remote configuration server');
-        this.connected = true;
-        this.reconnectAttempts = 0;
-        this.lastActivity = Date.now();
+    // Handle successful connection
+    this.socket.on('connect', () => {
+      console.log('✅ Connected to remote configuration server');
+      this.connected = true;
+      this.reconnectAttempts = 0;
+      this.lastActivity = Date.now();
 
-        if (this.options.enableMetrics) {
-          this.metrics.successfulConnections++;
+      if (this.options.enableMetrics) {
+        this.metrics.successfulConnections++;
+      }
+
+      // Notify connection change
+      if (this.options.onConnectionChange) {
+        this.options.onConnectionChange(true, 'Connected successfully');
+      }
+
+      // Request full configuration on connect
+      this.requestFullConfig();
+
+      // Process any pending requests
+      if (this.pendingRequests.size > 0) {
+        console.log(`🔄 Processing ${this.pendingRequests.size} pending configuration requests`);
+        for (const screenName of this.pendingRequests) {
+          this.requestScreenConfig(screenName);
         }
+        this.pendingRequests.clear();
+      }
+    });
 
-        // Notify connection change
-        if (this.options.onConnectionChange) {
-          this.options.onConnectionChange(true, 'Connected successfully');
-        }
+    // Handle connection acknowledgment
+    this.socket.on('connectionAck', (data) => {
+      console.log('🤝 Connection acknowledged by server:', data);
+      this.lastActivity = Date.now();
+    });
 
-        // Request full configuration on connect
-        this.requestFullConfig();
+    // Handle server restart notification
+    this.socket.on('serverRestarted', (data) => {
+      console.log('🔄 Server has been restarted:', data);
+      
+      // Request full configuration after server restart
+      if (data.action === 'requestFullConfig') {
+        setTimeout(() => {
+          this.requestFullConfig();
+        }, 500);
+      }
+      
+      this.lastActivity = Date.now();
+    });
 
-        // Process any pending requests
-        if (this.pendingRequests.size > 0) {
-          console.log(`🔄 Processing ${this.pendingRequests.size} pending configuration requests`);
-          for (const screenName of this.pendingRequests) {
-            this.requestScreenConfig(screenName);
-          }
-          this.pendingRequests.clear();
-        }
-      });    // Handle disconnection
+    // Handle disconnection
     this.socket.on('disconnect', (reason) => {
       console.log(`❌ Disconnected from remote configuration server: ${reason}`);
       this.connected = false;
@@ -274,22 +305,46 @@ export class ConfigClient {
         this.options.onConnectionChange(false, reason);
       }
 
-      // Only attempt reconnection for unexpected disconnections
-      // Don't reconnect for intentional server disconnections
+      // Handle different types of disconnections with appropriate delays
       if (this.options.autoReconnect && reason !== 'io server disconnect') {
-        this.attemptReconnection();
+        const isTransportError = reason.includes('transport') || reason.includes('websocket');
+        const delay = isTransportError ? 2000 : 0; // Extra delay for transport errors
+        
+        if (delay > 0) {
+          setTimeout(() => {
+            this.attemptReconnection();
+          }, delay);
+        } else {
+          this.attemptReconnection();
+        }
       }
     });
 
-    // Handle connection error
+    // Handle connection error with better timeout handling
     this.socket.on('connect_error', (error) => {
       console.error('❌ Connection error:', error);
       this.handleError('connect_error', error);
 
-      // Attempt reconnection if enabled
-      if (this.options.autoReconnect) {
+      // Attempt reconnection if enabled and not already connected
+      if (this.options.autoReconnect && !this.connected) {
         this.attemptReconnection();
       }
+    });
+
+    // Handle transport errors specifically
+    this.socket.on('transport', (transport: any) => {
+      console.log(`🚀 Transport changed to: ${transport.name}`);
+      
+      transport.on('error', (error: any) => {
+        console.warn(`⚠️ Transport error on ${transport.name}:`, error.message);
+        // Don't trigger reconnection for transport errors, let Socket.IO handle it
+      });
+    });
+
+    // Handle Socket.IO errors
+    this.socket.on('error', (error) => {
+      console.error('❌ Socket.IO error:', error);
+      this.handleError('socket_error', error);
     });
 
       // Handle configuration updates for specific screen
@@ -392,6 +447,29 @@ export class ConfigClient {
     this.socket.on('pong', (data) => {
       console.log('❤️ Server heartbeat received:', data);
       this.lastActivity = Date.now();
+    });
+
+    // Handle timeout errors specifically
+    this.socket.on('connect_timeout', () => {
+      console.warn('⏰ Connection timeout occurred');
+      this.handleError('connect_timeout', new Error('Connection timeout'));
+      
+      if (this.options.autoReconnect && !this.connected) {
+        this.attemptReconnection();
+      }
+    });
+
+    // Handle server shutdown notification
+    this.socket.on('serverShutdown', (data) => {
+      console.log('🔄 Server shutdown notification:', data);
+      this.connected = false;
+      
+      // Attempt reconnection after server shutdown
+      if (this.options.autoReconnect) {
+        setTimeout(() => {
+          this.attemptReconnection();
+        }, 2000);
+      }
     });
   }
 
@@ -630,8 +708,9 @@ export class ConfigClient {
     // Increment reconnection attempts
     this.reconnectAttempts++;
 
-    // Calculate delay with backoff
-    const delay = this.options.reconnectDelay || 5000;
+    // Calculate delay with exponential backoff
+    const baseDelay = this.options.reconnectDelay || 5000;
+    const delay = Math.min(baseDelay * Math.pow(1.5, this.reconnectAttempts - 1), 30000); // Max 30 seconds
 
     console.log(`⏳ Attempting reconnection in ${delay / 1000}s (attempt ${this.reconnectAttempts})`);
 
@@ -642,6 +721,7 @@ export class ConfigClient {
       // Close existing socket if any
       if (this.socket) {
         this.socket.close();
+        this.socket = null;
       }
 
       // Create new connection
