@@ -32,10 +32,12 @@ import {
     SectionList,
     StyleSheet,
 } from 'react-native';
+import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDispatch } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
 import { changeLanguage } from '../../features/language/languageSlice';
+import IconComponent from './IconComponent';
 
 /**
  * Enhanced Error Boundary with production-ready error reporting
@@ -244,6 +246,8 @@ const COMPONENT_MAP = {
     KeyboardAvoidingView,
     RefreshControl,
     SectionList,
+    LinearGradient,
+    Icon: IconComponent,
 };
 
 /**
@@ -843,7 +847,22 @@ const OptimizedDynamicComponent: React.FC<{
 
         // Handle special props for specific components
         if (type === 'Text' && props.text) {
-            newProps.children = props.text;
+            // For Text components, text should be children, not a prop
+            // Remove the text prop and let it be handled as children
+            delete newProps.text;
+        }
+
+        // Handle special props for Icon components
+        if (type === 'Icon') {
+            // Map backend icon props to IconComponent props
+            if (props.iconSize) {
+                newProps.size = props.iconSize;
+                delete newProps.iconSize;
+            }
+            if (props.iconColor) {
+                newProps.color = props.iconColor;
+                delete newProps.iconColor;
+            }
         }
 
         return newProps;
@@ -851,6 +870,11 @@ const OptimizedDynamicComponent: React.FC<{
 
     // Memoized children rendering
     const renderedChildren = useMemo(() => {
+        // Handle text content for Text components
+        if (type === 'Text' && props.text) {
+            return props.text;
+        }
+
         if (children.length === 0) return null;
 
         return children.map((child, index) => (
@@ -863,7 +887,7 @@ const OptimizedDynamicComponent: React.FC<{
                 maxDepth={maxDepth}
             />
         ));
-    }, [children, actionHandler, globalData, depth, maxDepth]);
+    }, [children, actionHandler, globalData, depth, maxDepth, type, props.text]);
 
     // Prevent infinite recursion - moved after hooks
     if (depth > maxDepth) {
