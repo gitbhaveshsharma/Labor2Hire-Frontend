@@ -145,6 +145,68 @@ export const MainApp: React.FC = () => {
                 dispatch(requestScreenConfig(SCREEN_NAMES.CHOOSE_LANGUAGE));
                 break;
 
+            case 'requestOtp':
+                // Handle OTP request
+                const { phone, navigateTo: otpNavigateTo } = action.payload;
+                console.log(`📱 Requesting OTP for phone: ${phone}`);
+
+                // Generate a random 6-digit OTP for development
+                const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+                console.log(`🔑 Generated OTP: ${generatedOtp} (Use this for testing)`);
+
+                // Navigate to OTP verification screen
+                if (otpNavigateTo && appConfig?.navigation?.routes) {
+                    const targetRoute = appConfig.navigation.routes.find(
+                        (route: any) => route.name === otpNavigateTo
+                    );
+                    const targetComponent = targetRoute?.component || otpNavigateTo;
+
+                    setCurrentScreen(targetComponent);
+                    dispatch(requestScreenConfig(targetComponent));
+                }
+                break;
+
+            case 'verifyOtp':
+                // Handle OTP verification
+                const { phone: verifyPhone, otp, navigateTo: verifyNavigateTo } = action.payload;
+                console.log(`🔐 Verifying OTP: ${otp} for phone: ${verifyPhone}`);
+
+                // Debug: Check what we received
+                console.log(`🔍 Debug - Raw OTP value: "${otp}"`);
+                console.log(`🔍 Debug - OTP type: ${typeof otp}`);
+                console.log(`🔍 Debug - OTP length: ${otp?.length}`);
+                console.log(`🔍 Debug - Action payload:`, JSON.stringify(action.payload, null, 2));
+
+                // For development, accept any 6-digit number as valid OTP
+                if (otp && typeof otp === 'string' && otp.length === 6 && /^\d{6}$/.test(otp.trim())) {
+                    console.log('✅ OTP verified successfully');
+
+                    // Navigate to next screen if specified
+                    if (verifyNavigateTo && appConfig?.navigation?.routes) {
+                        const targetRoute = appConfig.navigation.routes.find(
+                            (route: any) => route.name === verifyNavigateTo
+                        );
+                        const targetComponent = targetRoute?.component || verifyNavigateTo;
+
+                        setCurrentScreen(targetComponent);
+                        dispatch(requestScreenConfig(targetComponent));
+                    }
+                } else {
+                    console.log('❌ Invalid OTP format. Please enter a 6-digit number.');
+                    console.log(`🔍 Debug - Expected: 6-digit string, Got: "${otp}" (type: ${typeof otp}, length: ${otp?.length})`);
+                }
+                break;
+
+            case 'resendOtp':
+                // Handle OTP resend
+                const { phone: resendPhone } = action.payload;
+                console.log(`🔄 Resending OTP for phone: ${resendPhone}`);
+
+                // Generate a new random 6-digit OTP for development
+                const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+                console.log(`🔑 New OTP: ${newOtp} (Use this for testing)`);
+                break;
+
             default:
                 console.log('Unhandled action:', action);
         }

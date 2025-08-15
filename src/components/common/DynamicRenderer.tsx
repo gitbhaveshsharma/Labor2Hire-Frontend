@@ -414,6 +414,15 @@ class EnhancedActionHandler {
             case 'analytics':
                 await this.handleAnalyticsEvent(payload);
                 break;
+            case 'requestOtp':
+                await this.handleRequestOtp(payload);
+                break;
+            case 'verifyOtp':
+                await this.handleVerifyOtp(payload);
+                break;
+            case 'resendOtp':
+                await this.handleResendOtp(payload);
+                break;
             default:
                 console.warn(`Unknown action type: ${type}`);
                 throw new Error(`Unsupported action type: ${type}`);
@@ -653,6 +662,157 @@ class EnhancedActionHandler {
         }
     }
 
+    private async handleRequestOtp(payload: any): Promise<void> {
+        const { phone, navigateTo } = payload || {};
+        if (!phone) {
+            throw new Error('Phone number is required for OTP request');
+        }
+
+        try {
+            console.log(`📱 Requesting OTP for phone: ${phone}`);
+
+            // Generate OTP and log it for development
+            const response = await this.simulateOtpRequest(phone);
+
+            if (response.success) {
+                console.log('✅ OTP sent successfully');
+                if (response.otp) {
+                    console.log(`🎯 Generated OTP: ${response.otp} (for development testing)`);
+                }
+
+                // Navigate to OTP verification screen if specified
+                if (navigateTo && this.navigation) {
+                    await this.handleNavigation({ navigateTo });
+                }
+            } else {
+                throw new Error(response.error || 'Failed to send OTP');
+            }
+        } catch (error) {
+            console.error('OTP request failed:', error);
+            throw new Error(`OTP request failed: ${this.getErrorMessage(error)}`);
+        }
+    }
+
+    private async handleVerifyOtp(payload: any): Promise<void> {
+        const { phone, otp, navigateTo } = payload || {};
+        if (!phone || !otp) {
+            throw new Error('Phone number and OTP are required for verification');
+        }
+
+        try {
+            console.log(`🔐 Verifying OTP for phone: ${phone}`);
+
+            // TODO: Replace with actual OTP verification service call
+            // For now, simulate OTP verification
+            const response = await this.simulateOtpVerification(phone, otp);
+
+            if (response.success) {
+                console.log('✅ OTP verified successfully');
+
+                // Navigate to next screen if specified
+                if (navigateTo && this.navigation) {
+                    await this.handleNavigation({ navigateTo });
+                }
+            } else {
+                throw new Error(response.error || 'Invalid OTP code');
+            }
+        } catch (error) {
+            console.error('OTP verification failed:', error);
+            throw new Error(`OTP verification failed: ${this.getErrorMessage(error)}`);
+        }
+    }
+
+    private async handleResendOtp(payload: any): Promise<void> {
+        const { phone } = payload || {};
+        if (!phone) {
+            throw new Error('Phone number is required for OTP resend');
+        }
+
+        try {
+            console.log(`🔄 Resending OTP for phone: ${phone}`);
+
+            // Generate new OTP and log it for development
+            const response = await this.simulateOtpRequest(phone);
+
+            if (response.success) {
+                console.log('✅ OTP resent successfully');
+                if (response.otp) {
+                    console.log(`🎯 New OTP: ${response.otp} (for development testing)`);
+                }
+            } else {
+                throw new Error(response.error || 'Failed to resend OTP');
+            }
+        } catch (error) {
+            console.error('OTP resend failed:', error);
+            throw new Error(`OTP resend failed: ${this.getErrorMessage(error)}`);
+        }
+    }
+
+    // Simulation methods - replace with actual service calls
+    private async simulateOtpRequest(phone: string): Promise<{ success: boolean; error?: string; otp?: string }> {
+        // Simulate network delay
+        await this.sleep(1000);
+
+        // Validate phone number format
+        if (!/^\+?[\d\s-()]+$/.test(phone.trim())) {
+            return { success: false, error: 'Invalid phone number format' };
+        }
+
+        // Generate random 6-digit OTP for development
+        const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Log OTP for development - developers can see this in console
+        console.log(`🔑 DEV OTP: ${generatedOtp} for phone: ${phone}`);
+        console.log(`📝 Developer Note: Use OTP "${generatedOtp}" for testing`);
+
+        // Store OTP in memory for verification (in real app, this would be stored securely)
+        this.globalData.tempOtp = generatedOtp;
+        this.globalData.tempOtpPhone = phone;
+        this.globalData.tempOtpExpiry = Date.now() + 5 * 60 * 1000; // 5 minutes
+
+        // Simulate success (in real app, this would call your OTP service)
+        return { success: true, otp: generatedOtp };
+    }
+
+    private async simulateOtpVerification(phone: string, otp: string): Promise<{ success: boolean; error?: string }> {
+        // Simulate network delay
+        await this.sleep(800);
+
+        // Validate OTP format
+        if (!/^\d{4,6}$/.test(otp.trim())) {
+            return { success: false, error: 'OTP must be 4-6 digits' };
+        }
+
+        // Check against stored OTP (development simulation)
+        const storedOtp = this.globalData.tempOtp;
+        const storedPhone = this.globalData.tempOtpPhone;
+        const expiry = this.globalData.tempOtpExpiry;
+
+        if (!storedOtp || !storedPhone || !expiry) {
+            return { success: false, error: 'No OTP found. Please request a new OTP.' };
+        }
+
+        if (Date.now() > expiry) {
+            return { success: false, error: 'OTP has expired. Please request a new OTP.' };
+        }
+
+        if (phone !== storedPhone) {
+            return { success: false, error: 'Phone number mismatch.' };
+        }
+
+        if (otp.trim() === storedOtp) {
+            // Clear stored OTP after successful verification
+            delete this.globalData.tempOtp;
+            delete this.globalData.tempOtpPhone;
+            delete this.globalData.tempOtpExpiry;
+
+            console.log(`✅ OTP verification successful for phone: ${phone}`);
+            return { success: true };
+        }
+
+        return { success: false, error: 'Invalid OTP code' };
+    }
+
     // Enhanced condition evaluation with comprehensive operators
     public evaluateCondition(condition: ConditionDefinition): boolean {
         const startTime = Date.now();
@@ -736,6 +896,45 @@ class EnhancedActionHandler {
         return value;
     }
 
+    // Public helper to interpolate payload/template strings using the action handler's globalData
+    public interpolatePayload(payload: any): any {
+        if (payload === null || payload === undefined) return payload;
+
+        const traverse = (obj: any): any => {
+            if (typeof obj === 'string') {
+                // Full-match template like "{{state.auth.phoneNumber}}"
+                const fullMatch = obj.match(/^\s*\{\{\s*([^}]+)\s*\}\}\s*$/);
+                if (fullMatch) {
+                    const path = fullMatch[1].trim();
+                    const v = this.getFieldValue(path);
+                    return v !== undefined ? v : obj;
+                }
+
+                // Replace inline templates within a larger string
+                return obj.replace(/\{\{\s*([^}]+)\s*\}\}/g, (_m: string, p: string) => {
+                    const v = this.getFieldValue(p.trim());
+                    return v !== undefined && v !== null ? String(v) : '';
+                });
+            }
+
+            if (Array.isArray(obj)) {
+                return obj.map(traverse);
+            }
+
+            if (typeof obj === 'object' && obj !== null) {
+                const result: Record<string, any> = {};
+                for (const [k, v] of Object.entries(obj)) {
+                    result[k] = traverse(v);
+                }
+                return result;
+            }
+
+            return obj;
+        };
+
+        return traverse(payload);
+    }
+
     private getErrorMessage(error: unknown): string {
         if (error instanceof Error) {
             return error.message;
@@ -787,6 +986,10 @@ class EnhancedActionHandler {
         }
     }
 
+    public updateGlobalData(newGlobalData: Record<string, any>): void {
+        this.globalData = { ...this.globalData, ...newGlobalData };
+    }
+
     public getMetrics(): typeof this.metrics {
         return { ...this.metrics };
     }
@@ -822,6 +1025,17 @@ const OptimizedDynamicComponent: React.FC<{
 }> = memo(({ component, actionHandler, globalData = {}, depth = 0, maxDepth = 10 }) => {
     const { type, props = {}, style = {}, children = [], actions = {}, conditions } = component;
 
+    // Debug logging for input components
+    if (type === 'TextInput') {
+        console.log('🔍 Rendering TextInput component:', {
+            id: component.id,
+            type: type,
+            placeholder: props.placeholder,
+            actions: Object.keys(actions),
+            hasOnChangeText: !!actions.onChangeText
+        });
+    }
+
     // Memoized condition evaluation - moved before any early returns
     const shouldRender = useMemo(() => {
         // Check visibility conditions
@@ -836,17 +1050,130 @@ const OptimizedDynamicComponent: React.FC<{
 
     // Memoized action processing - fixed useCallback usage
     const processedProps = useMemo(() => {
-        const newProps = { ...props };
+        // First interpolate template strings in props
+        let interpolatedProps = { ...props };
+        try {
+            interpolatedProps = actionHandler.interpolatePayload(interpolatedProps);
+        } catch (error) {
+            console.warn('Failed to interpolate component props:', error);
+            interpolatedProps = { ...props };
+        }
+
+        const newProps = { ...interpolatedProps };
 
         // Process actions to create event handlers
         Object.entries(actions).forEach(([eventName, action]) => {
-            newProps[eventName] = () => {
-                actionHandler.executeAction(action, { componentId: component.id, depth });
-            };
-        });
+            if (eventName === 'onChangeText') {
+                console.log('📝 Setting up onChangeText handler for component:', component.id);
+                newProps[eventName] = (value?: any) => {
+                    console.log('📝 onChangeText triggered:', {
+                        componentId: component.id,
+                        value: value,
+                        placeholder: interpolatedProps.placeholder
+                    });
 
-        // Handle special props for specific components
-        if (type === 'Text' && props.text) {
+                    // Handle text input changes for auth fields
+                    if (component.id) {
+                        if (component.id.includes('phone') || component.id.includes('Phone') ||
+                            interpolatedProps.placeholder?.toLowerCase().includes('phone') ||
+                            interpolatedProps.placeholder?.toLowerCase().includes('mobile')) {
+                            console.log('📱 Executing updatePhoneNumber action');
+                            actionHandler.executeAction({
+                                type: 'updatePhoneNumber',
+                                payload: { phoneNumber: value }
+                            }, { componentId: component.id, depth });
+                        } else if (component.id.includes('otp') || component.id.includes('OTP') ||
+                            component.id.includes('Otp') ||
+                            interpolatedProps.placeholder?.toLowerCase().includes('otp') ||
+                            interpolatedProps.placeholder?.toLowerCase().includes('code')) {
+                            console.log('🔐 Executing updateOtpCode action');
+                            actionHandler.executeAction({
+                                type: 'updateOtpCode',
+                                payload: { otpCode: value }
+                            }, { componentId: component.id, depth });
+                        }
+                    }
+
+                    // Also execute the original action if it exists
+                    actionHandler.executeAction(action, { componentId: component.id, depth, inputValue: value });
+                };
+            } else {
+                newProps[eventName] = (value?: any) => {
+                    actionHandler.executeAction(action, { componentId: component.id, depth, inputValue: value });
+                };
+            }
+        });        // If no onChangeText action is defined but this is a TextInput, create one
+        if (type === 'TextInput' && !actions.onChangeText) {
+            console.log('🔍 Creating onChangeText handler for TextInput:', {
+                componentId: component.id,
+                placeholder: interpolatedProps.placeholder,
+                type: type
+            });
+
+            newProps.onChangeText = (value?: any) => {
+                console.log('📝 TextInput onChange triggered:', {
+                    componentId: component.id,
+                    value: value,
+                    placeholder: interpolatedProps.placeholder
+                });
+
+                // Check for phone input based on ID or placeholder
+                const isPhoneInput = component.id && (
+                    component.id.toLowerCase().includes('phone') ||
+                    component.id.toLowerCase().includes('mobile') ||
+                    component.id.toLowerCase().includes('number')
+                ) || interpolatedProps.placeholder && (
+                    interpolatedProps.placeholder.toLowerCase().includes('phone') ||
+                    interpolatedProps.placeholder.toLowerCase().includes('mobile') ||
+                    interpolatedProps.placeholder.toLowerCase().includes('number')
+                );
+
+                // Check for OTP input based on ID or placeholder  
+                const isOtpInput = component.id && (
+                    component.id.toLowerCase().includes('otp') ||
+                    component.id.toLowerCase().includes('code') ||
+                    component.id.toLowerCase().includes('verify')
+                ) || interpolatedProps.placeholder && (
+                    interpolatedProps.placeholder.toLowerCase().includes('otp') ||
+                    interpolatedProps.placeholder.toLowerCase().includes('code') ||
+                    interpolatedProps.placeholder.toLowerCase().includes('verify')
+                );
+
+                if (isPhoneInput) {
+                    console.log('📱 Detected phone input, updating phone number');
+                    actionHandler.executeAction({
+                        type: 'updatePhoneNumber',
+                        payload: { phoneNumber: value }
+                    }, { componentId: component.id, depth });
+                } else if (isOtpInput) {
+                    console.log('🔐 Detected OTP input, updating OTP code');
+                    actionHandler.executeAction({
+                        type: 'updateOtpCode',
+                        payload: { otpCode: value }
+                    }, { componentId: component.id, depth });
+                } else {
+                    // If we can't determine the input type, let's try to infer from context
+                    console.log('❓ Unknown input type, checking context or assuming based on screen');
+
+                    // If we're on Auth screen and no phone is set, assume it's phone
+                    // If we're on OTPVerification screen, assume it's OTP
+                    if (globalData?.screen?.name === 'Auth' || globalData?.app?.currentScreen === 'Auth') {
+                        console.log('📱 Auth screen detected, treating as phone input');
+                        actionHandler.executeAction({
+                            type: 'updatePhoneNumber',
+                            payload: { phoneNumber: value }
+                        }, { componentId: component.id, depth });
+                    } else if (globalData?.screen?.name === 'OTPVerification' || globalData?.app?.currentScreen === 'OTPVerification') {
+                        console.log('🔐 OTP screen detected, treating as OTP input');
+                        actionHandler.executeAction({
+                            type: 'updateOtpCode',
+                            payload: { otpCode: value }
+                        }, { componentId: component.id, depth });
+                    }
+                }
+            };
+        }        // Handle special props for specific components
+        if (type === 'Text' && newProps.text) {
             // For Text components, text should be children, not a prop
             // Remove the text prop and let it be handled as children
             delete newProps.text;
@@ -855,24 +1182,30 @@ const OptimizedDynamicComponent: React.FC<{
         // Handle special props for Icon components
         if (type === 'Icon') {
             // Map backend icon props to IconComponent props
-            if (props.iconSize) {
-                newProps.size = props.iconSize;
+            if (newProps.iconSize) {
+                newProps.size = newProps.iconSize;
                 delete newProps.iconSize;
             }
-            if (props.iconColor) {
-                newProps.color = props.iconColor;
+            if (newProps.iconColor) {
+                newProps.color = newProps.iconColor;
                 delete newProps.iconColor;
             }
         }
 
         return newProps;
-    }, [props, actions, actionHandler, type, component.id, depth]);
+    }, [props, actions, actionHandler, type, component.id, depth, globalData?.app?.currentScreen, globalData?.screen?.name]);
 
     // Memoized children rendering
     const renderedChildren = useMemo(() => {
         // Handle text content for Text components
         if (type === 'Text' && props.text) {
-            return props.text;
+            // Interpolate template strings in text content
+            let textContent = props.text;
+            if (typeof textContent === 'string') {
+                // Use action handler to interpolate templates
+                textContent = actionHandler.interpolatePayload(textContent);
+            }
+            return textContent;
         }
 
         if (children.length === 0) return null;
@@ -935,15 +1268,36 @@ const ProductionDynamicRenderer: React.FC<DynamicRendererProps> = ({
         return new EnhancedActionHandler(dispatch, navigation, globalData, onPerformanceMetric);
     }, [dispatch, navigation, globalData, onPerformanceMetric]);
 
+    // Update actionHandler's globalData when it changes
+    useMemo(() => {
+        actionHandler.updateGlobalData(globalData);
+        return actionHandler;
+    }, [actionHandler, globalData]);
+
     // Override executeAction if custom handler provided
     const enhancedActionHandler = useMemo(() => {
         if (onAction) {
             const originalExecute = actionHandler.executeAction.bind(actionHandler);
+
+            // Override to call app-level handler with interpolated payloads first
             actionHandler.executeAction = async (action: ActionDefinition, context?: any) => {
                 try {
-                    await onAction(action, context);
+                    // Interpolate payload/template values using the action handler's globalData
+                    let interpolatedAction = action;
+                    try {
+                        const interpolatedPayload = (actionHandler as any).interpolatePayload
+                            ? (actionHandler as any).interpolatePayload(action.payload)
+                            : action.payload;
+                        interpolatedAction = { ...action, payload: interpolatedPayload };
+                    } catch (interpErr) {
+                        console.warn('Failed to interpolate action payload, sending original payload', interpErr);
+                    }
+
+                    // Call the app-provided handler with interpolated action
+                    await onAction(interpolatedAction, context);
                 } catch (error) {
-                    console.warn('Custom action handler failed, falling back to default');
+                    console.warn('Custom action handler failed, falling back to default', error);
+                    // Fallback to original executor with original action
                     await originalExecute(action, context);
                 }
             };

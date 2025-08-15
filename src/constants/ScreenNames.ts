@@ -13,6 +13,7 @@ export const SCREEN_NAMES = {
     
     // Authentication Screens
     AUTH: 'Auth',
+    OTP_VERIFICATION: 'OTPVerification',
     LOGIN: 'Login',
     REGISTER: 'Register',
     

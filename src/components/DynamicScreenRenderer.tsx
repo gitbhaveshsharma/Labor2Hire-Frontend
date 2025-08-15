@@ -1,10 +1,17 @@
 /**
  * Dynamic Screen Renderer Component
  * Renders individual screens based on backend configuration
+ * 
+ * Key Features:
+ * - Manages local auth state (phoneNumber, otpCode) 
+ * - Automatically handles input field changes via updatePhoneNumber/updateOtpCode actions
+ * - Provides template interpolation for {{state.auth.phoneNumber}} and {{state.auth.otpCode}}
+ * - Ensures requestOtp and verifyOtp actions get the latest auth state values
+ * 
  * @author Labor2Hire Team
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
 import { View, Text, StyleSheet } from 'react-native';
 import DynamicRenderer from './common/DynamicRenderer';
@@ -25,8 +32,83 @@ export const DynamicScreenRenderer: React.FC<DynamicScreenRendererProps> = ({
     // Get the configuration for the current screen
     const screenConfig = useSelector(selectScreenConfig(currentScreen));
 
+    // Local state for auth data that can be updated by actions
+    const [authState, setAuthState] = useState({
+        phoneNumber: '',
+        otpCode: '',
+        isAuthenticated: false,
+        isLoading: false,
+    });
+
     // Handle action with navigation support
     const handleActionWithNavigation = (action: any, context?: any) => {
+        // Update auth state based on action
+        if (action.type === 'updateAuthState' && action.payload) {
+            setAuthState(prev => ({
+                ...prev,
+                ...action.payload,
+            }));
+            return;
+        }
+
+        // Handle phone number input
+        if (action.type === 'updatePhoneNumber' && action.payload?.phoneNumber !== undefined) {
+            console.log('🔢 DynamicScreenRenderer: Updating phone number:', action.payload.phoneNumber);
+            setAuthState(prev => ({
+                ...prev,
+                phoneNumber: action.payload.phoneNumber,
+            }));
+            return;
+        }
+
+        // Handle OTP input
+        if (action.type === 'updateOtpCode' && action.payload?.otpCode !== undefined) {
+            console.log('🔐 DynamicScreenRenderer: Updating OTP code:', action.payload.otpCode);
+            setAuthState(prev => ({
+                ...prev,
+                otpCode: action.payload.otpCode,
+            }));
+            return;
+        }
+
+        // For requestOtp and verifyOtp actions, ensure we have the latest auth state
+        if (action.type === 'requestOtp') {
+            console.log('🚀 DynamicScreenRenderer: Processing requestOtp action');
+            console.log('🚀 Current auth state:', authState);
+            console.log('🚀 Original action payload:', action.payload);
+
+            const updatedAction = {
+                ...action,
+                payload: {
+                    ...action.payload,
+                    phone: action.payload.phone || authState.phoneNumber,
+                }
+            };
+
+            console.log('🚀 Updated requestOtp action payload:', updatedAction.payload);
+            onAction(updatedAction, context);
+            return;
+        }
+
+        if (action.type === 'verifyOtp') {
+            console.log('🚀 DynamicScreenRenderer: Processing verifyOtp action');
+            console.log('🚀 Current auth state:', authState);
+            console.log('🚀 Original action payload:', action.payload);
+
+            const updatedAction = {
+                ...action,
+                payload: {
+                    ...action.payload,
+                    phone: action.payload.phone || authState.phoneNumber,
+                    otp: action.payload.otp || authState.otpCode,
+                }
+            };
+
+            console.log('🚀 Updated verifyOtp action payload:', updatedAction.payload);
+            onAction(updatedAction, context);
+            return;
+        }
+
         // Check if this is a navigation action
         if (action.type === 'navigate' && action.payload?.screen) {
             onNavigate(action.payload.screen);
@@ -78,6 +160,10 @@ export const DynamicScreenRenderer: React.FC<DynamicScreenRendererProps> = ({
         navigation: {
             canGoBack: currentScreen !== SCREEN_NAMES.CHOOSE_LANGUAGE,
             currentRoute: currentScreen,
+        },
+        // Add auth state that templates can reference
+        state: {
+            auth: authState,
         },
     };
 
