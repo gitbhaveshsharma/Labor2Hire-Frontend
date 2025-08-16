@@ -16,7 +16,10 @@ export const SCREEN_NAMES = {
     OTP_VERIFICATION: 'OTPVerification',
     LOGIN: 'Login',
     REGISTER: 'Register',
-    
+
+    // Choose Role Screen
+    CHOOSE_ROLE: 'ChooseRole',
+
     // Home Screen
     HOME: 'Home',
     
