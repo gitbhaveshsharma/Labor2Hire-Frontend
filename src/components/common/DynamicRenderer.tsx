@@ -32,6 +32,7 @@ import {
     SectionList,
     StyleSheet,
 } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import LinearGradient from 'react-native-linear-gradient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useDispatch } from 'react-redux';
@@ -247,6 +248,8 @@ const COMPONENT_MAP = {
     RefreshControl,
     SectionList,
     LinearGradient,
+    Picker,
+    'Picker.Item': Picker.Item,
     Icon: IconComponent,
 };
 
@@ -384,6 +387,9 @@ class EnhancedActionHandler {
             case 'selectLanguage':
                 await this.handleLanguageSelection(payload);
                 break;
+            case 'selectCategory':
+                await this.handleSelectCategory(payload);
+                break;
             case 'dispatch':
                 await this.handleReduxDispatch(payload);
                 break;
@@ -422,6 +428,9 @@ class EnhancedActionHandler {
                 break;
             case 'resendOtp':
                 await this.handleResendOtp(payload);
+                break;
+            case 'selectRole':
+                await this.handleSelectRole(payload);
                 break;
             default:
                 console.warn(`Unknown action type: ${type}`);
@@ -745,6 +754,91 @@ class EnhancedActionHandler {
         } catch (error) {
             console.error('OTP resend failed:', error);
             throw new Error(`OTP resend failed: ${this.getErrorMessage(error)}`);
+        }
+    }
+
+    private async handleSelectRole(payload: any): Promise<void> {
+        const { role, navigateTo } = payload || {};
+        if (!role) {
+            throw new Error('Role is required for role selection');
+        }
+
+        try {
+            console.log(`👤 Role selected: ${role}`);
+
+            // Update global state with selected role
+            this.globalData.selectedRole = role;
+
+            // If dispatch is available, update Redux state
+            if (this.dispatch) {
+                this.dispatch({
+                    type: 'user/setRole',
+                    payload: { role }
+                });
+            }
+
+            // Navigate to next screen if specified
+            if (navigateTo && this.navigation) {
+                console.log(`🧭 Navigating to: ${navigateTo}`);
+                await this.handleNavigation({ navigateTo });
+            }
+        } catch (error) {
+            console.error('Role selection failed:', error);
+            throw new Error(`Role selection failed: ${this.getErrorMessage(error)}`);
+        }
+    }
+
+    private async handleSelectCategory(payload: any): Promise<void> {
+        const { category, action } = payload || {};
+        if (!category) {
+            throw new Error('Category is required for category selection');
+        }
+
+        try {
+            console.log(`🏗️ Category action: ${action || 'select'} - ${category}`);
+
+            // Initialize state if not exists
+            if (!this.globalData.state) {
+                this.globalData.state = {};
+            }
+
+            if (action === 'remove') {
+                // Clear category selection
+                this.globalData.state.selectedCategory = '';
+            } else {
+                // Single category selection - replace any existing selection
+                if (category && category !== '') {
+                    // Update the selected category for single selection
+                    this.globalData.state.selectedCategory = category;
+                }
+            }
+
+            // Update global state for single category selection
+            this.globalData.state = {
+                ...this.globalData.state,
+                selectedCategory: this.globalData.state.selectedCategory
+            };
+
+            // If dispatch is available, update Redux state (optional since no user slice exists)
+            if (this.dispatch) {
+                // Only dispatch if there's a user slice configured
+                try {
+                    this.dispatch({
+                        type: 'user/setCategory',
+                        payload: {
+                            category: this.globalData.state.selectedCategory
+                        }
+                    });
+                } catch (error) {
+                    // Redux dispatch failed - this is expected if no user slice is configured
+                    console.log('Redux dispatch for category selection not configured:', error);
+                }
+            }
+
+            console.log(`✅ Category updated: ${this.globalData.state.selectedCategory}`);
+        } catch (error) {
+            console.error('Category selection failed:', error);
+            throw new Error(`Category selection failed: ${this.getErrorMessage(error)}`);
         }
     }
 
@@ -1097,6 +1191,27 @@ const OptimizedDynamicComponent: React.FC<{
                     // Also execute the original action if it exists
                     actionHandler.executeAction(action, { componentId: component.id, depth, inputValue: value });
                 };
+            } else if (eventName === 'onValueChange') {
+                console.log('🔽 Setting up onValueChange handler for Picker component:', component.id);
+                newProps[eventName] = (value?: any, index?: number) => {
+                    console.log('🔽 onValueChange triggered:', {
+                        componentId: component.id,
+                        value: value,
+                        index: index
+                    });
+
+                    // Create an interpolated action with the actual selected value
+                    const interpolatedAction = {
+                        ...action,
+                        payload: {
+                            ...action.payload,
+                            category: value
+                        }
+                    };
+
+                    // Execute the action with the selected value
+                    actionHandler.executeAction(interpolatedAction, { componentId: component.id, depth, selectedValue: value, selectedIndex: index });
+                };
             } else {
                 newProps[eventName] = (value?: any) => {
                     actionHandler.executeAction(action, { componentId: component.id, depth, inputValue: value });
@@ -1189,6 +1304,27 @@ const OptimizedDynamicComponent: React.FC<{
             if (newProps.iconColor) {
                 newProps.color = newProps.iconColor;
                 delete newProps.iconColor;
+            }
+        }
+
+        // Handle special props for Picker components
+        if (type === 'Picker') {
+            // Render Picker.Item children from options prop
+            if (newProps.options && Array.isArray(newProps.options)) {
+                const pickerItems = newProps.options.map((option: any, index: number) => {
+                    const label = option.label || option.text || option.name || option;
+                    const value = option.value !== undefined ? option.value : option;
+
+                    return React.createElement(Picker.Item, {
+                        key: `picker-item-${index}`,
+                        label: String(label),
+                        value: value
+                    });
+                });
+
+                // Add the Picker.Items as children
+                newProps.children = pickerItems;
+                delete newProps.options; // Remove options prop as it's now in children
             }
         }
 

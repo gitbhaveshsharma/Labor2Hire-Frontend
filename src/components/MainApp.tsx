@@ -207,6 +207,28 @@ export const MainApp: React.FC = () => {
                 console.log(`🔑 New OTP: ${newOtp} (Use this for testing)`);
                 break;
 
+            case 'selectRole':
+                // Handle role selection and navigate to Categories screen
+                const { role, navigateTo: roleNavigateTo } = action.payload;
+                console.log(`👤 Role selected: ${role}, navigating to: ${roleNavigateTo}`);
+
+                // Find the navigation target from app config
+                if (roleNavigateTo && appConfig?.navigation?.routes) {
+                    const targetRoute = appConfig.navigation.routes.find(
+                        (route: any) => route.name === roleNavigateTo
+                    );
+                    const targetComponent = targetRoute?.component || roleNavigateTo;
+
+                    setCurrentScreen(targetComponent);
+                    // Request the next screen config
+                    dispatch(requestScreenConfig(targetComponent));
+                } else if (roleNavigateTo) {
+                    // Fallback if no app config routes
+                    setCurrentScreen(roleNavigateTo);
+                    dispatch(requestScreenConfig(roleNavigateTo));
+                }
+                break;
+
             default:
                 console.log('Unhandled action:', action);
         }

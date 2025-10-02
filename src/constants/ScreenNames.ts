@@ -20,6 +20,9 @@ export const SCREEN_NAMES = {
     // Choose Role Screen
     CHOOSE_ROLE: 'ChooseRole',
 
+    // Categories Screen (for job category selection)
+    CATEGORIES: 'Categories',
+
     // Home Screen
     HOME: 'Home',
     

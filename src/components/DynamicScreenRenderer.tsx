@@ -40,6 +40,11 @@ export const DynamicScreenRenderer: React.FC<DynamicScreenRendererProps> = ({
         isLoading: false,
     });
 
+    // Local state for category selection
+    const [categoryState, setCategoryState] = useState({
+        selectedCategory: '',
+    });
+
     // Handle action with navigation support
     const handleActionWithNavigation = (action: any, context?: any) => {
         // Update auth state based on action
@@ -69,6 +74,16 @@ export const DynamicScreenRenderer: React.FC<DynamicScreenRendererProps> = ({
                 otpCode: action.payload.otpCode,
             }));
             return;
+        }
+
+        // Handle category selection
+        if (action.type === 'selectCategory' && action.payload?.category !== undefined) {
+            console.log('🏗️ DynamicScreenRenderer: Updating selected category:', action.payload.category);
+            setCategoryState(prev => ({
+                ...prev,
+                selectedCategory: action.payload.category,
+            }));
+            // Still pass the action to the main handler for any additional processing
         }
 
         // For requestOtp and verifyOtp actions, ensure we have the latest auth state
@@ -164,6 +179,8 @@ export const DynamicScreenRenderer: React.FC<DynamicScreenRendererProps> = ({
         // Add auth state that templates can reference
         state: {
             auth: authState,
+            selectedCategory: categoryState.selectedCategory,
+            userRole: 'labor', // Default user role
         },
     };
 
